@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: gateway-service
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:${SPRING_DATA_REDIS_HOST:localhost}}
+      port: ${SPRING_REDIS_PORT:${SPRING_DATA_REDIS_PORT:6379}}
+
+server:
+  port: 8080
+
+services:
+  product:
+    url: ${PRODUCT_SERVICE_URL:http://localhost:8081}
+  order:
+    url: ${ORDER_SERVICE_URL:http://localhost:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      access: unrestricted
+    health:
+      show-details: always
+  
+  metrics:
+    tags:
+      application: gateway-service
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    resource-attributes:
+      "service.name": ${spring.application.name}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+logging:
+  pattern:
+    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-}] "
+  include-application-name: false

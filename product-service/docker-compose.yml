@@ -1,0 +1,42 @@
+services:
+  product-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    networks:
+      - observability-net
+
+  product-prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: product-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - product-service
+    networks:
+      - observability-net
+
+  product-grafana:
+    image: grafana/grafana:11.3.0
+    container_name: product-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - product-prometheus
+    networks:
+      - observability-net
+
+networks:
+  observability-net:
+    driver: bridge
