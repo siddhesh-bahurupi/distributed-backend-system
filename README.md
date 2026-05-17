@@ -334,6 +334,38 @@ curl -X POST http://localhost:8080/api/orders \
 
 ---
 
+# Screenshots
+
+## Dockerized Infrastructure
+
+The complete distributed backend system running locally using Docker Compose.
+
+![Docker Containers](screenshots/docker-containers.png)
+
+---
+
+## Grafana Dashboard
+
+Real-time observability dashboards showing:
+
+* request throughput
+* request latency
+* JVM metrics
+* gateway traffic
+* Redis rate limiting metrics
+
+![Grafana Dashboard](screenshots/grafana-dashboard.png)
+
+---
+
+## Prometheus Targets
+
+Prometheus successfully scraping all distributed backend services.
+
+![Prometheus Targets](screenshots/prometheus-targets.png)
+
+---
+
 # Monitoring
 
 ## Prometheus
@@ -396,7 +428,7 @@ Planned enhancements:
 
 ---
 
-# This project focuses on
+# This project focuses on:
 
 * distributed coordination
 * observability
