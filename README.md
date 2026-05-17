@@ -1,14 +1,13 @@
 # Observable Distributed Backend System
 
-A production-style distributed backend system demonstrating:
+A production-style distributed backend system built to demonstrate:
 
-* centralized Redis-based distributed rate limiting
+* distributed Redis-based rate limiting
 * API gateway architecture
 * service-to-service communication
 * PostgreSQL persistence
 * observability with Prometheus and Grafana
 * Dockerized infrastructure
-* scalable backend design principles
 
 ---
 
@@ -35,116 +34,64 @@ graph TD
     ProductService -. Metrics .-> Prometheus
 
     Prometheus --> Grafana[Grafana Dashboards]
-
-    Gateway -. Traces .-> Tempo[OpenTelemetry / Tempo<br/>WIP]
-    OrderService -. Traces .-> Tempo
-    ProductService -. Traces .-> Tempo
-
-    Tempo --> Grafana
-```
-
-## Request Flow
-
-```text
-Client
-  -> Gateway
-      -> Order Service
-          -> Product Service
-              -> PostgreSQL
 ```
 
 ---
 
 # Tech Stack
 
-| Category               | Technologies                    |
-| ---------------------- | ------------------------------- |
-| Backend                | Java 21, Spring Boot            |
-| Gateway                | Spring Cloud Gateway            |
-| Database               | PostgreSQL                      |
-| Distributed State      | Redis                           |
-| Observability          | Micrometer, Prometheus, Grafana |
-| Tracing                | OpenTelemetry (WIP)             |
-| Containerization       | Docker, Docker Compose          |
-| Build Tool             | Maven                           |
-| Load Testing (Planned) | JMeter                          |
+* Java 21
+* Spring Boot
+* Spring Cloud Gateway
+* Redis
+* PostgreSQL
+* Docker & Docker Compose
+* Micrometer
+* Prometheus
+* Grafana
+* OpenTelemetry (WIP)
 
 ---
 
 # Key Features
 
-## Distributed Redis-Based Rate Limiting
+## Custom Distributed Rate Limiter
 
-A custom distributed sliding-window rate limiter was implemented manually using Redis sorted sets (ZSETs).
+Implemented a manual sliding-window distributed rate limiter using Redis ZSETs.
 
-Instead of relying on a built-in gateway rate limiter, the project implements the rate limiting algorithm directly to demonstrate distributed systems coordination and backend traffic engineering concepts.
+Features:
 
-Key implementation details:
-
-* centralized distributed state using Redis
-* sliding-window algorithm using Redis ZSETs
-* atomic request tracking per client/window
+* centralized distributed state
 * HTTP 429 handling
-* scalable stateless gateway architecture
-* distributed coordination across gateway instances
-* low-cardinality observability design
-
-The limiter works by:
-
-1. storing request timestamps in Redis sorted sets
-2. removing expired timestamps from the active window
-3. counting active requests inside the time window
-4. allowing or rejecting requests based on configured thresholds
-
-This architecture enables multiple gateway instances to share a globally consistent rate limit state through Redis.
-
-Example Redis flow:
-
-```text
-Gateway Service
-      |
-Redis Sliding Window Limiter
-      |
-Allow / Reject Request
-```
+* gateway-level throttling
+* scalable stateless design
+* low-cardinality observability tags
 
 ---
 
-## API Gateway Architecture
+## Services
 
-The system uses Spring Cloud Gateway as the centralized entry point.
-
-Responsibilities:
+### Gateway Service
 
 * request routing
 * Redis rate limiting
-* observability entry point
-* centralized metrics collection
-* distributed systems coordination
-
----
-
-## Microservice Communication
-
-The system is split into focused backend services:
+* centralized observability
 
 ### Product Service
 
-Handles:
-
-* products
-* inventory
+* product APIs
+* inventory management
 * PostgreSQL persistence
 
 ### Order Service
 
-Handles:
+* order APIs
+* service-to-service communication
+* PostgreSQL persistence
 
-* order creation
-* order retrieval
-* communication with Product Service
+---
 
-Request Flow:
+# Request Flow
 
 ```text
 Client
@@ -156,126 +103,41 @@ Client
 
 ---
 
-## PostgreSQL Persistence
-
-The backend uses PostgreSQL for persistent storage.
-
-### Products Table
-
-```text
-products
----------
-id
-name
-price
-inventory
-```
-
-### Orders Table
-
-```text
-orders
----------
-id
-product_id
-quantity
-created_at
-```
-
----
-
 # Observability
 
-## Prometheus Metrics
-
-All services expose:
-
-```text
-/actuator/prometheus
-```
-
-Metrics collected include:
+Metrics collected:
 
 * request throughput
 * request latency
-* rate-limited requests
-* JVM memory
-* CPU usage
-* gateway traffic
-
----
-
-## Grafana Dashboards
-
-Grafana dashboards visualize:
-
-* API traffic
-* latency trends
-* Redis rate limiting behavior
 * JVM metrics
-* service performance
+* gateway traffic
+* rate-limited requests
 
-The system follows production-style observability practices by avoiding high-cardinality metric labels.
-
-Example route grouping:
-
-```text
-/api/products/**
-/api/orders/**
-/api/**
-```
-
-instead of dynamic IDs or client IPs.
+Distributed tracing instrumentation with OpenTelemetry is currently in progress.
 
 ---
 
-# Distributed Tracing (Work In Progress)
+# Screenshots
 
-OpenTelemetry instrumentation has been integrated as part of ongoing work toward distributed request tracing.
+## Dockerized Infrastructure
 
-Goal:
-
-```text
-Gateway Service
-   -> Order Service
-       -> Product Service
-```
-
-as a single distributed trace.
+![Docker Containers](screenshots/docker-containers.png)
 
 ---
 
-# Dockerized Infrastructure
+## Grafana Dashboard
 
-The entire system runs using Docker Compose.
+![Grafana Dashboard](screenshots/grafana-dashboard.png)
 
-Services:
+---
 
-* gateway-service
-* product-service
-* order-service
-* postgres
-* redis
-* prometheus
-* grafana
+## Prometheus Targets
+
+![Prometheus Targets](screenshots/prometheus-targets.png)
 
 ---
 
 # Local Setup
-
-## Prerequisites
-
-Install:
-
-* Java 21
-* Docker Desktop
-* Maven
-
----
-
-## Start the System
-
-From the project root:
 
 ```bash
 docker compose up --build
@@ -283,7 +145,7 @@ docker compose up --build
 
 ---
 
-# Service Ports
+# Ports
 
 | Service         | Port |
 | --------------- | ---- |
@@ -311,16 +173,6 @@ curl -X POST http://localhost:8080/api/products \
 }'
 ```
 
----
-
-## Get Products
-
-```bash
-curl http://localhost:8080/api/products
-```
-
----
-
 ## Create Order
 
 ```bash
@@ -334,107 +186,12 @@ curl -X POST http://localhost:8080/api/orders \
 
 ---
 
-# Screenshots
-
-## Dockerized Infrastructure
-
-The complete distributed backend system running locally using Docker Compose.
-
-![Docker Containers](screenshots/docker-containers.png)
-
----
-
-## Grafana Dashboard
-
-Real-time observability dashboards showing:
-
-* request throughput
-* request latency
-* JVM metrics
-* gateway traffic
-* Redis rate limiting metrics
-
-![Grafana Dashboard](screenshots/grafana-dashboard.png)
-
----
-
-## Prometheus Targets
-
-Prometheus successfully scraping all distributed backend services.
-
-![Prometheus Targets](screenshots/prometheus-targets.png)
-
----
-
-# Monitoring
-
-## Prometheus
-
-Open:
-
-```text
-http://localhost:9090
-```
-
-Targets:
-
-```text
-http://localhost:9090/targets
-```
-
----
-
-## Grafana
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-Default credentials:
-
-```text
-admin / admin
-```
-
----
-
 # Engineering Concepts Demonstrated
 
-This project demonstrates:
-
 * distributed systems design
-* centralized rate limiting
+* Redis distributed coordination
 * API gateway architecture
-* service-to-service communication
 * observability engineering
-* metrics monitoring
+* service-to-service communication
 * Docker networking
 * scalable backend design
-* production-style backend infrastructure
-
----
-
-# Future Improvements
-
-Planned enhancements:
-
-* fully operational OpenTelemetry tracing
-* JMeter load testing
-* gateway replication
-* distributed trace visualization
-* performance benchmarking
-
----
-
-# This project focuses on:
-
-* distributed coordination
-* observability
-* backend infrastructure
-* scalability
-* traffic engineering
-* production-style monitoring
-
-The goal was to build a realistic backend engineering system that reflects modern distributed backend architecture principles.
