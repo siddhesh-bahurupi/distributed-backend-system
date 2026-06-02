@@ -17,7 +17,7 @@ A production-style distributed backend system built to demonstrate:
 graph TD
     Client[Client Requests]
 
-    Client --> Gateway[Spring Cloud Gateway]
+    Client --> Gateway[Spring Cloud Gateway Replicas]
 
     Gateway --> RL[Redis Distributed<br/>Rate Limiter]
 
@@ -145,26 +145,73 @@ docker compose up --build
 
 ---
 
+# Replicated Gateway
+
+Start three stateless gateway instances with Docker Compose:
+
+```bash
+docker compose up --build --scale gateway-service=3 -d
+```
+
+`gateway-service` has no fixed container name or fixed host port, so Compose can create multiple identical containers. Because no load balancer is added, Docker publishes an available host port for each replica; inspect the direct endpoints with:
+
+```bash
+docker compose ps gateway-service
+docker compose port gateway-service 8080 --index 1
+docker compose port gateway-service 8080 --index 2
+docker compose port gateway-service 8080 --index 3
+```
+
+Every gateway is configured with `SPRING_REDIS_HOST=redis` and executes the same atomic Redis Lua sliding-window check. Rate-limit counters are stored as Redis sorted sets keyed by client IP, rather than in a gateway process, so a request through any replica consumes the same five-requests-per-minute budget.
+
+Prometheus uses Docker DNS discovery for `gateway-service` and refreshes its targets every five seconds. After startup, the Prometheus targets page should show three healthy targets for the `gateway-service` job.
+
+## Validate Distributed Rate Limiting
+
+The following test sends six requests with the same client identity across all three direct gateway endpoints:
+
+```bash
+GW1=$(docker compose port gateway-service 8080 --index 1 | sed 's/.*://')
+GW2=$(docker compose port gateway-service 8080 --index 2 | sed 's/.*://')
+GW3=$(docker compose port gateway-service 8080 --index 3 | sed 's/.*://')
+
+for port in "$GW1" "$GW2" "$GW3" "$GW1" "$GW2" "$GW3"; do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -H "X-Forwarded-For: 203.0.113.10" \
+    "http://localhost:${port}/api/products"
+done
+```
+
+The first five requests pass through the gateways; the sixth returns `429` even though no single replica handled five requests. This verifies that limiter state is centralized in Redis. Use a different `X-Forwarded-For` value or wait one minute before repeating the test.
+
+---
+
 # Ports
 
-| Service         | Port |
-| --------------- | ---- |
-| Gateway Service | 8080 |
-| Product Service | 8081 |
-| Order Service   | 8082 |
-| PostgreSQL      | 5432 |
-| Redis           | 6379 |
-| Prometheus      | 9090 |
-| Grafana         | 3000 |
+| Service          | Published Port |
+| ---------------- | -------------- |
+| Gateway Replica(s)| Docker-assigned host port to container port `8080` |
+| Product Service  | 8081 |
+| Order Service    | 8082 |
+| PostgreSQL       | 5432 |
+| Redis            | 6379 |
+| Prometheus       | 9090 |
+| Grafana          | 3000 |
 
 ---
 
 # Example API Calls
 
+First resolve the published host port for a gateway replica:
+
+```bash
+GATEWAY_PORT=$(docker compose port gateway-service 8080 --index 1 | sed 's/.*://')
+```
+
 ## Create Product
 
 ```bash
-curl -X POST http://localhost:8080/api/products \
+curl -X POST "http://localhost:${GATEWAY_PORT}/api/products" \
 -H "Content-Type: application/json" \
 -d '{
   "name": "Laptop",
@@ -176,7 +223,7 @@ curl -X POST http://localhost:8080/api/products \
 ## Create Order
 
 ```bash
-curl -X POST http://localhost:8080/api/orders \
+curl -X POST "http://localhost:${GATEWAY_PORT}/api/orders" \
 -H "Content-Type: application/json" \
 -d '{
   "productId": 1,

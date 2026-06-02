@@ -1,0 +1,64 @@
+# Maven and JVM build output
+**/target/
+**/build/
+**/out/
+**/dist/
+*.class
+*.jar
+*.war
+*.ear
+**/.mvn/wrapper/dists/
+
+# IDE metadata
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.factorypath
+.project
+.settings/
+.apt_generated/
+.springBeans
+.sts4-cache/
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+secrets.json
+.aws/
+.ssh/
+
+# Docker local state and exported images
+.docker/
+docker-data/
+docker-cache/
+*.tar
+*.tar.gz
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
