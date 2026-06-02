@@ -1,13 +1,6 @@
 # Observable Distributed Backend System
 
-A production-style distributed backend system built to demonstrate:
-
-* distributed Redis-based rate limiting
-* API gateway architecture
-* service-to-service communication
-* PostgreSQL persistence
-* observability with Prometheus and Grafana
-* Dockerized infrastructure
+A Dockerized multi-service backend demonstrating distributed gateway replication, shared Redis rate limiting, PostgreSQL persistence, metrics, and distributed tracing.
 
 ---
 
@@ -18,11 +11,11 @@ graph TD
     Client[Client Requests]
 
     Client --> Gateway[Spring Cloud Gateway Replicas]
+    Gateway --> RL[Redis Sliding-Window<br/>Rate Limiter]
 
-    Gateway --> RL[Redis Distributed<br/>Rate Limiter]
-
+    Gateway --> ProductService[Product Service]
     Gateway --> OrderService[Order Service]
-    OrderService --> ProductService[Product Service]
+    OrderService --> ProductService
 
     ProductService --> Postgres[(PostgreSQL)]
     OrderService --> Postgres
@@ -30,10 +23,15 @@ graph TD
     RL --> Redis[(Redis)]
 
     Gateway -. Metrics .-> Prometheus[Prometheus]
-    OrderService -. Metrics .-> Prometheus
     ProductService -. Metrics .-> Prometheus
+    OrderService -. Metrics .-> Prometheus
 
-    Prometheus --> Grafana[Grafana Dashboards]
+    Gateway -. Traces .-> Tempo[Tempo]
+    ProductService -. Traces .-> Tempo
+    OrderService -. Traces .-> Tempo
+
+    Prometheus --> Grafana[Grafana]
+    Tempo --> Grafana
 ```
 
 ---
@@ -49,44 +47,44 @@ graph TD
 * Micrometer
 * Prometheus
 * Grafana
-* OpenTelemetry (WIP)
+* OpenTelemetry
+* Grafana Tempo
+* k6
 
 ---
 
 # Key Features
 
-## Custom Distributed Rate Limiter
+## Distributed Gateway Replication
 
-Implemented a manual sliding-window distributed rate limiter using Redis ZSETs.
+`gateway-service` is stateless and can be scaled with Docker Compose. Each replica routes product and order traffic while sharing the same Redis-backed rate-limit state.
 
-Features:
+## Shared Redis Rate Limiting
 
-* centralized distributed state
-* HTTP 429 handling
-* gateway-level throttling
-* scalable stateless design
-* low-cardinality observability tags
+The gateway implements a distributed sliding-window rate limiter with Redis sorted sets and an atomic Lua script.
 
----
+* shared counters across gateway replicas
+* client-IP-based request budgets
+* HTTP `429` responses when limits are exceeded
+* rate-limit metrics for monitoring
 
 ## Services
 
 ### Gateway Service
 
 * request routing
-* Redis rate limiting
-* centralized observability
+* replicated stateless instances
+* shared Redis rate limiting
 
 ### Product Service
 
-* product APIs
-* inventory management
+* product and inventory APIs
 * PostgreSQL persistence
 
 ### Order Service
 
 * order APIs
-* service-to-service communication
+* product-service integration
 * PostgreSQL persistence
 
 ---
@@ -95,150 +93,92 @@ Features:
 
 ```text
 Client
-  -> Gateway
-      -> Order Service
+  -> Gateway Replica
+      -> Product Service -> PostgreSQL
+      -> Order Service   -> PostgreSQL
           -> Product Service
-              -> PostgreSQL
+
+Gateway Replicas
+  -> Redis
 ```
 
 ---
 
 # Observability
 
-Metrics collected:
+Prometheus scrapes service metrics, including Docker DNS-discovered gateway replicas. Grafana dashboards expose request throughput, latency, JVM metrics, gateway traffic, and rate-limited requests.
 
-* request throughput
-* request latency
-* JVM metrics
-* gateway traffic
-* rate-limited requests
-
-Distributed tracing instrumentation with OpenTelemetry is currently in progress.
+OpenTelemetry traces flow from the services to Grafana Tempo and are available through Grafana for cross-service request inspection.
 
 ---
 
-# Screenshots
+# Load Testing
 
-## Dockerized Infrastructure
+k6 scripts cover product requests, order requests, and rate-limit bursts across replicated gateways:
 
-![Docker Containers](screenshots/docker-containers.png)
-
----
-
-## Grafana Dashboard
-
-![Grafana Dashboard](screenshots/grafana-dashboard.png)
-
----
-
-## Prometheus Targets
-
-![Prometheus Targets](screenshots/prometheus-targets.png)
+* `load-tests/products-load-test.js`
+* `load-tests/orders-load-test.js`
+* `load-tests/rate-limit-burst-test.js`
 
 ---
 
 # Local Setup
 
 ```bash
-docker compose up --build
-```
-
----
-
-# Replicated Gateway
-
-Start three stateless gateway instances with Docker Compose:
-
-```bash
 docker compose up --build --scale gateway-service=3 -d
 ```
 
-`gateway-service` has no fixed container name or fixed host port, so Compose can create multiple identical containers. Because no load balancer is added, Docker publishes an available host port for each replica; inspect the direct endpoints with:
-
-```bash
-docker compose ps gateway-service
-docker compose port gateway-service 8080 --index 1
-docker compose port gateway-service 8080 --index 2
-docker compose port gateway-service 8080 --index 3
-```
-
-Every gateway is configured with `SPRING_REDIS_HOST=redis` and executes the same atomic Redis Lua sliding-window check. Rate-limit counters are stored as Redis sorted sets keyed by client IP, rather than in a gateway process, so a request through any replica consumes the same five-requests-per-minute budget.
-
-Prometheus uses Docker DNS discovery for `gateway-service` and refreshes its targets every five seconds. After startup, the Prometheus targets page should show three healthy targets for the `gateway-service` job.
-
-## Validate Distributed Rate Limiting
-
-The following test sends six requests with the same client identity across all three direct gateway endpoints:
-
-```bash
-GW1=$(docker compose port gateway-service 8080 --index 1 | sed 's/.*://')
-GW2=$(docker compose port gateway-service 8080 --index 2 | sed 's/.*://')
-GW3=$(docker compose port gateway-service 8080 --index 3 | sed 's/.*://')
-
-for port in "$GW1" "$GW2" "$GW3" "$GW1" "$GW2" "$GW3"; do
-  curl -s -o /dev/null -w "%{http_code}\n" \
-    -H "X-Forwarded-For: 203.0.113.10" \
-    "http://localhost:${port}/api/products"
-done
-```
-
-The first five requests pass through the gateways; the sixth returns `429` even though no single replica handled five requests. This verifies that limiter state is centralized in Redis. Use a different `X-Forwarded-For` value or wait one minute before repeating the test.
+Use `docker compose ps gateway-service` to inspect the Docker-assigned host ports for gateway replicas.
 
 ---
 
 # Ports
 
-| Service          | Published Port |
-| ---------------- | -------------- |
+| Service           | Published Port |
+| ----------------- | -------------- |
 | Gateway Replica(s)| Docker-assigned host port to container port `8080` |
-| Product Service  | 8081 |
-| Order Service    | 8082 |
-| PostgreSQL       | 5432 |
-| Redis            | 6379 |
-| Prometheus       | 9090 |
-| Grafana          | 3000 |
+| Product Service   | 8081 |
+| Order Service     | 8082 |
+| PostgreSQL        | 5432 |
+| Redis             | 6379 |
+| Tempo             | 3200 |
+| Prometheus        | 9090 |
+| Grafana           | 3000 |
 
 ---
 
-# Example API Calls
+# Screenshots
 
-First resolve the published host port for a gateway replica:
+## Docker Containers
 
-```bash
-GATEWAY_PORT=$(docker compose port gateway-service 8080 --index 1 | sed 's/.*://')
-```
+![Docker Containers](screenshots/docker-containers.png)
 
-## Create Product
+## Grafana Dashboard
 
-```bash
-curl -X POST "http://localhost:${GATEWAY_PORT}/api/products" \
--H "Content-Type: application/json" \
--d '{
-  "name": "Laptop",
-  "price": 50000,
-  "inventory": 10
-}'
-```
+![Grafana Dashboard](screenshots/grafana-dashboard.png)
 
-## Create Order
+## Prometheus Targets
 
-```bash
-curl -X POST "http://localhost:${GATEWAY_PORT}/api/orders" \
--H "Content-Type: application/json" \
--d '{
-  "productId": 1,
-  "quantity": 1
-}'
-```
+![Prometheus Targets](screenshots/prometheus-targets.png)
+
+## Distributed Traces
+
+![Distributed Traces](screenshots/traces.png)
+
+---
+
+# Deployment
+
+AWS EC2 deployment notes are available in [deployment/ec2-deployment.md](deployment/ec2-deployment.md).
 
 ---
 
 # Engineering Concepts Demonstrated
 
-* distributed systems design
-* Redis distributed coordination
-* API gateway architecture
-* observability engineering
+* distributed coordination with Redis
+* stateless gateway replication
 * service-to-service communication
-* Docker networking
-* scalable backend design
+* PostgreSQL-backed services
+* metrics and distributed tracing
+* Docker Compose service orchestration
+* k6 load testing
